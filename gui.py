@@ -13,7 +13,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Audio Analyzer")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1000, 800)
 
         layout = QVBoxLayout()
 
@@ -24,18 +24,16 @@ class MainWindow(QMainWindow):
         self.label_info = QLabel("Audio Information Will Appear Here")
         layout.addWidget(self.label_info)
 
-        self.conversion_type = QComboBox()
-        self.conversion_type.addItem("Convert to Mono")
-        self.conversion_type.addItem("Convert to Stereo")
-        layout.addWidget(self.conversion_type)
-
-        self.filter_type = QComboBox()
-        self.filter_type.addItem("Apply Low-pass Filter")
-        self.filter_type.addItem("Apply High-pass Filter")
-        layout.addWidget(self.filter_type)
+        self.action_type = QComboBox()
+        self.action_type.addItem("Convert to Mono")
+        self.action_type.addItem("Convert to Stereo")
+        self.action_type.addItem("Apply Low-pass Filter")
+        self.action_type.addItem("Apply High-pass Filter")
+        self.action_type.addItem("Apply Audio Compression")  # Agregar la opción de compresión
+        layout.addWidget(self.action_type)
 
         self.apply_button = QPushButton("Apply")
-        self.apply_button.clicked.connect(self.apply_filter)
+        self.apply_button.clicked.connect(self.apply_action)
         layout.addWidget(self.apply_button)
 
         self.save_button = QPushButton("Save Audio File")
@@ -64,16 +62,25 @@ class MainWindow(QMainWindow):
             self.label_info.setText(f"Loaded {path}\nSample Rate: {self.sr} Hz\nDuration: {self.num_samples / self.sr:.2f} seconds\nChannels: {self.num_channels}\nSamples: {self.num_samples}")
             self.update_plot()
 
-    def convert_audio(self):
+    def apply_action(self):
         if self.audio_data is not None:
-            selection = self.conversion_type.currentText()
+            selection = self.action_type.currentText()
             if selection == "Convert to Mono" and self.num_channels > 1:
                 self.audio_data = np.mean(self.audio_data, axis=0, keepdims=True)
                 self.num_channels = 1
             elif selection == "Convert to Stereo" and self.num_channels == 1:
                 self.audio_data = np.tile(self.audio_data, (2, 1))
                 self.num_channels = 2
-            self.label_info.setText(f"Conversion Applied: {selection}\nSample Rate: {self.sr} Hz\nDuration: {self.num_samples / self.sr:.2f} seconds\nChannels: {self.num_channels}\nSamples: {self.num_samples}")
+            elif selection == "Apply Low-pass Filter":
+                cutoff_freq = 1000  # Frecuencia de corte en Hz
+                self.audio_data = self.low_pass_filter(self.audio_data, self.sr, cutoff_freq)
+            elif selection == "Apply High-pass Filter":
+                cutoff_freq = 1000  # Frecuencia de corte en Hz
+                self.audio_data = self.high_pass_filter(self.audio_data, self.sr, cutoff_freq)
+            elif selection == "Apply Audio Compression":
+                self.apply_compression()
+
+            self.label_info.setText(f"Action Applied: {selection}")
             self.update_plot()
 
     def save_audio(self):
@@ -104,22 +111,6 @@ class MainWindow(QMainWindow):
         fig.update_layout(height=800, width=700)
         pyo.plot(fig, filename='audio_waveform.html', auto_open=True)
 
-    def apply_filter(self):
-        if self.audio_data is not None:
-            selection = self.filter_type.currentText()
-            if selection == "Apply Low-pass Filter":
-                # Aplicar filtro de paso bajo
-                cutoff_freq = 1000  # Frecuencia de corte en Hz
-                filtered_data = self.low_pass_filter(self.audio_data, self.sr, cutoff_freq)
-                self.audio_data = filtered_data
-            elif selection == "Apply High-pass Filter":
-                # Aplicar filtro de paso alto
-                cutoff_freq = 1000  # Frecuencia de corte en Hz
-                filtered_data = self.high_pass_filter(self.audio_data, self.sr, cutoff_freq)
-                self.audio_data = filtered_data
-            self.label_info.setText(f"Filter Applied: {selection}")
-            self.update_plot()
-
     def low_pass_filter(self, audio_data, sr, cutoff):
         nyquist = sr / 2
         normal_cutoff = cutoff / nyquist
@@ -133,3 +124,11 @@ class MainWindow(QMainWindow):
         b, a = scipy.signal.butter(5, normal_cutoff, btype='high', analog=False)
         filtered_data = scipy.signal.lfilter(b, a, audio_data)
         return filtered_data
+
+    def apply_compression(self):
+        if self.audio_data is not None:
+            compression_factor = 0.5  # Factor de compresión, ajusta según sea necesario
+            self.audio_data *= compression_factor  # Reduce la amplitud de la señal
+            self.label_info.setText("Audio Compression Applied")
+            self.update_plot()
+
