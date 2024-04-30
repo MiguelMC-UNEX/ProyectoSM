@@ -13,3 +13,18 @@ The code is hosted on GitHub with detailed instructions in the Readme.md. Conda 
 
 ## Objective
 To provide a comprehensive tool for audio file manipulation and analysis with an intuitive and user-friendly interface.
+
+
+## Bugs Fixes
+
+
+
+```bash
+pip uninstall pyqt5
+```
+
+
+
+```bash
+pip install pyqt5
+```
