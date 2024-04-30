@@ -155,6 +155,7 @@ dependencies:
   - zstd=1.5.5=hc292b87_0
   - pip:
       - kaleido==0.2.1
+      - mplcursors==0.5.3
       - pycparser==2.22
       - pyqt5-qt5==5.15.2
       - pyqtchart==5.13.0
