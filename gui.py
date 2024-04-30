@@ -1,11 +1,62 @@
+import os
 import librosa
 import numpy as np
 import soundfile as sf
-from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QFileDialog, QLabel, QComboBox
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
-import plotly.offline as pyo
+from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QFileDialog, QLabel, QComboBox, QDialog
+from PyQt5.QtCore import QFile, QTimer
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import scipy.signal
+import mplcursors
+
+
+class PlotWindow(QDialog):
+    def __init__(self, audio_data, sr):
+        super().__init__()
+
+        self.setWindowTitle("Audio Waveform")
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        # Create Matplotlib figure and canvas
+        self.figure = Figure()
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+
+        self.audio_data = audio_data
+        self.sr = sr
+
+        # Plot waveform and spectrum
+        self.plot_waveform()
+        self.plot_spectrum()
+
+        self.resize(800, 600)
+
+    def plot_waveform(self):
+        ax_waveform = self.figure.add_subplot(211)
+        t = np.arange(len(self.audio_data[0])) / self.sr
+        for i in range(self.audio_data.shape[0]):
+            ax_waveform.plot(t, self.audio_data[i], label=f"Channel {i+1}")
+        ax_waveform.set_xlabel('Time (s)')
+        ax_waveform.set_ylabel('Amplitude')
+        ax_waveform.set_title('Waveform')
+        ax_waveform.legend(loc='upper right')  # Specify legend location
+        # Add cursor tooltip
+        mplcursors.cursor(ax_waveform, hover=True).connect("add", lambda sel: sel.annotation.set_text(f"{sel.target[0]}, {sel.target[1]}"))
+
+    def plot_spectrum(self):
+        ax_spectrum = self.figure.add_subplot(212)
+        N = len(self.audio_data[0])
+        for i in range(self.audio_data.shape[0]):
+            yf = np.fft.rfft(np.array(self.audio_data[i]))  # Convert audio_data to numpy array
+            xf = np.fft.rfftfreq(N, 1 / self.sr)
+            ax_spectrum.plot(xf, np.abs(yf), label=f"Channel {i+1}")
+        ax_spectrum.set_xlabel('Frequency (Hz)')
+        ax_spectrum.set_ylabel('Magnitude')
+        ax_spectrum.set_title('Spectrum')
+        ax_spectrum.legend(loc='upper right')  # Specify legend location
+        # Add cursor tooltip
+        mplcursors.cursor(ax_spectrum, hover=True).connect("add", lambda sel: sel.annotation.set_text(f"{sel.target[0]}, {sel.target[1]}"))
 
 
 class MainWindow(QMainWindow):
@@ -29,7 +80,7 @@ class MainWindow(QMainWindow):
         self.action_type.addItem("Convert to Stereo")
         self.action_type.addItem("Apply Low-pass Filter")
         self.action_type.addItem("Apply High-pass Filter")
-        self.action_type.addItem("Apply Audio Compression")  # Agregar la opción de compresión
+        self.action_type.addItem("Apply Audio Compression")
         layout.addWidget(self.action_type)
 
         self.apply_button = QPushButton("Apply")
@@ -39,6 +90,8 @@ class MainWindow(QMainWindow):
         self.save_button = QPushButton("Save Audio File")
         self.save_button.clicked.connect(self.save_audio)
         layout.addWidget(self.save_button)
+
+        self.plot_window = None
 
         central_widget = QWidget()
         central_widget.setLayout(layout)
@@ -60,7 +113,7 @@ class MainWindow(QMainWindow):
             self.num_channels = self.audio_data.shape[0]
             self.num_samples = self.audio_data.shape[1]
             self.label_info.setText(f"Loaded {path}\nSample Rate: {self.sr} Hz\nDuration: {self.num_samples / self.sr:.2f} seconds\nChannels: {self.num_channels}\nSamples: {self.num_samples}")
-            self.update_plot()
+            self.show_plot_window()
 
     def apply_action(self):
         if self.audio_data is not None:
@@ -72,16 +125,16 @@ class MainWindow(QMainWindow):
                 self.audio_data = np.tile(self.audio_data, (2, 1))
                 self.num_channels = 2
             elif selection == "Apply Low-pass Filter":
-                cutoff_freq = 1000  # Frecuencia de corte en Hz
+                cutoff_freq = 1000
                 self.audio_data = self.low_pass_filter(self.audio_data, self.sr, cutoff_freq)
             elif selection == "Apply High-pass Filter":
-                cutoff_freq = 1000  # Frecuencia de corte en Hz
+                cutoff_freq = 1000
                 self.audio_data = self.high_pass_filter(self.audio_data, self.sr, cutoff_freq)
             elif selection == "Apply Audio Compression":
                 self.apply_compression()
 
             self.label_info.setText(f"Action Applied: {selection}")
-            self.update_plot()
+            self.show_plot_window()
 
     def save_audio(self):
         if self.audio_data is not None:
@@ -90,26 +143,10 @@ class MainWindow(QMainWindow):
                 sf.write(path, self.audio_data.T, self.sr)
                 self.label_info.setText(f"File saved as: {path}")
 
-    def update_plot(self):
-        fig = make_subplots(rows=2, cols=1, subplot_titles=("Time Domain", "Frequency Domain"))
-
-        # Time domain plot
-        if self.num_channels > 1:
-            for i in range(self.num_channels):
-                fig.add_trace(go.Scatter(y=self.audio_data[i], mode='lines', name=f'Channel {i+1}'), row=1, col=1)
-        else:
-            fig.add_trace(go.Scatter(y=self.audio_data.squeeze(), mode='lines', name='Mono'), row=1, col=1)
-
-        # Frequency domain plot for the first channel or the mono channel
-        N = len(self.audio_data[0])
-        T = 1.0 / self.sr
-        yf = np.fft.rfft(self.audio_data[0])
-        xf = np.fft.rfftfreq(N, T)
-        fig.add_trace(go.Scatter(x=xf, y=np.abs(yf), mode='lines', name='Spectrum'), row=2, col=1)
-
-        # Update the figure layout and plot it
-        fig.update_layout(height=800, width=700)
-        pyo.plot(fig, filename='audio_waveform.html', auto_open=True)
+    def show_plot_window(self):
+        if self.audio_data is not None:
+            self.plot_window = PlotWindow(self.audio_data, self.sr)
+            self.plot_window.exec_()
 
     def low_pass_filter(self, audio_data, sr, cutoff):
         nyquist = sr / 2
@@ -127,8 +164,8 @@ class MainWindow(QMainWindow):
 
     def apply_compression(self):
         if self.audio_data is not None:
-            compression_factor = 0.5  # Factor de compresión, ajusta según sea necesario
-            self.audio_data *= compression_factor  # Reduce la amplitud de la señal
+            compression_factor = 0.5
+            self.audio_data *= compression_factor
             self.label_info.setText("Audio Compression Applied")
-            self.update_plot()
+
 
