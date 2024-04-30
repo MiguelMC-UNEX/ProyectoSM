@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QFil
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 import plotly.offline as pyo
+import scipy.signal
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -27,9 +29,14 @@ class MainWindow(QMainWindow):
         self.conversion_type.addItem("Convert to Stereo")
         layout.addWidget(self.conversion_type)
 
-        self.convert_button = QPushButton("Convert")
-        self.convert_button.clicked.connect(self.convert_audio)
-        layout.addWidget(self.convert_button)
+        self.filter_type = QComboBox()
+        self.filter_type.addItem("Apply Low-pass Filter")
+        self.filter_type.addItem("Apply High-pass Filter")
+        layout.addWidget(self.filter_type)
+
+        self.apply_button = QPushButton("Apply")
+        self.apply_button.clicked.connect(self.apply_filter)
+        layout.addWidget(self.apply_button)
 
         self.save_button = QPushButton("Save Audio File")
         self.save_button.clicked.connect(self.save_audio)
@@ -86,13 +93,43 @@ class MainWindow(QMainWindow):
         else:
             fig.add_trace(go.Scatter(y=self.audio_data.squeeze(), mode='lines', name='Mono'), row=1, col=1)
 
-        # Frequency domain plot
+        # Frequency domain plot for the first channel or the mono channel
         N = len(self.audio_data[0])
         T = 1.0 / self.sr
         yf = np.fft.rfft(self.audio_data[0])
         xf = np.fft.rfftfreq(N, T)
-
         fig.add_trace(go.Scatter(x=xf, y=np.abs(yf), mode='lines', name='Spectrum'), row=2, col=1)
 
+        # Update the figure layout and plot it
         fig.update_layout(height=800, width=700)
         pyo.plot(fig, filename='audio_waveform.html', auto_open=True)
+
+    def apply_filter(self):
+        if self.audio_data is not None:
+            selection = self.filter_type.currentText()
+            if selection == "Apply Low-pass Filter":
+                # Aplicar filtro de paso bajo
+                cutoff_freq = 1000  # Frecuencia de corte en Hz
+                filtered_data = self.low_pass_filter(self.audio_data, self.sr, cutoff_freq)
+                self.audio_data = filtered_data
+            elif selection == "Apply High-pass Filter":
+                # Aplicar filtro de paso alto
+                cutoff_freq = 1000  # Frecuencia de corte en Hz
+                filtered_data = self.high_pass_filter(self.audio_data, self.sr, cutoff_freq)
+                self.audio_data = filtered_data
+            self.label_info.setText(f"Filter Applied: {selection}")
+            self.update_plot()
+
+    def low_pass_filter(self, audio_data, sr, cutoff):
+        nyquist = sr / 2
+        normal_cutoff = cutoff / nyquist
+        b, a = scipy.signal.butter(5, normal_cutoff, btype='low', analog=False)
+        filtered_data = scipy.signal.lfilter(b, a, audio_data)
+        return filtered_data
+
+    def high_pass_filter(self, audio_data, sr, cutoff):
+        nyquist = sr / 2
+        normal_cutoff = cutoff / nyquist
+        b, a = scipy.signal.butter(5, normal_cutoff, btype='high', analog=False)
+        filtered_data = scipy.signal.lfilter(b, a, audio_data)
+        return filtered_data
