@@ -136,11 +136,15 @@ class MainWindow(QMainWindow):
             self.label_info.setText(f"Action Applied: {selection}")
             self.show_plot_window()
 
+            
     def save_audio(self):
         if self.audio_data is not None:
             path, _ = QFileDialog.getSaveFileName(self, "Save Audio File", "", "Audio Files (*.wav *.flac)")
             if path:
-                sf.write(path, self.audio_data.T, self.sr)
+                # Asegurar que self.sr es un entero
+                samplerate_int = int(self.sr)
+                # Transponer self.audio_data antes de guardar
+                sf.write(path, self.audio_data.T, samplerate_int)
                 self.label_info.setText(f"File saved as: {path}")
 
     def show_plot_window(self):
@@ -161,11 +165,17 @@ class MainWindow(QMainWindow):
         b, a = scipy.signal.butter(5, normal_cutoff, btype='high', analog=False)
         filtered_data = scipy.signal.lfilter(b, a, audio_data)
         return filtered_data
+    
 
     def apply_compression(self):
         if self.audio_data is not None:
-            compression_factor = 0.5
-            self.audio_data *= compression_factor
-            self.label_info.setText("Audio Compression Applied")
+            downsampling_factor = 2  # Define el factor de downsampling
 
+            # Aplicar downsampling tomando cada 'downsampling_factor'-ésima muestra
+            self.audio_data = self.audio_data[:, ::downsampling_factor]
+            self.sr /= downsampling_factor  # Ajustar la tasa de muestreo a la nueva tasa
+            self.num_samples = self.audio_data.shape[1]  # Actualizar el número de muestras
+            
+            # Actualizar la información en la interfaz de usuario
+            self.label_info.setText(f"Audio Compression Applied\nNew Sample Rate: {self.sr} Hz\nNew Duration: {self.num_samples / self.sr:.2f} seconds")
 
